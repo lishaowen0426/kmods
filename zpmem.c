@@ -9,6 +9,12 @@
 #include <linux/spinlock.h>
 #include <linux/blkdev.h>
 #include <linux/dax.h>
+#include <linux/version.h>
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0)
+#define NEW_FS_DAX_GET 
+#endif
+
 
 
 static int major = 0;
@@ -39,6 +45,7 @@ struct zpmem_pool{
 
 };
 
+static struct zpmem_pool* z_pool;
 
 static int zpmem_zpool_evict(struct zpmem_pool *pool, unsigned long handle)
 {
@@ -58,7 +65,7 @@ static struct zpmem_dev* zpmem_dev_ctr(void){
     struct dax_device* dax_dev;
     struct zpmem_dev* zdev;
     u64 memory_map_size;
-    //u64 part_off;
+    u64 part_off __maybe_unused;
 
     if(major == 0){
         pr_err("major number is 0");
@@ -77,9 +84,14 @@ static struct zpmem_dev* zpmem_dev_ctr(void){
         pr_err("blkdev_get_by_dev failed");
         return NULL;
     } 
-    memory_map_size = bdev_nr_bytes(bdev); 
+    memory_map_size = (loff_t)bdev_nr_sectors(bdev)<<SECTOR_SHIFT; 
     pr_info("memory_map_size: %llu", memory_map_size);
+
+#ifdef NEW_FS_DAX_GET
+    dax_dev = fs_dax_get_by_bdev(bdev, &part_off);
+#else
     dax_dev = fs_dax_get_by_bdev(bdev);
+#endif
     if(IS_ERR(dax_dev)){
         pr_err("fs_dax_get_by_bdev failed");
         return NULL;
@@ -129,6 +141,8 @@ static void *zpmem_zpool_create(const char *name, gfp_t gfp,
 
 static void zpmem_zpool_destroy(void *pool)
 {
+    put_dax(((struct zpmem_pool*)pool)->pmem_dev->dax_dev);
+    kfree(pool);
 }
 
 static int zpmem_zpool_malloc(void *pool, size_t size, gfp_t gfp,
@@ -178,16 +192,18 @@ static struct zpool_driver zpmem_zpool_driver = {
 
 
 static int __init init_zpmem(void){
-    struct zpmem_pool* zpool;
-    pr_info("loaded\n");
-    zpool = zpmem_create_pool(GFP_KERNEL, &zpmem_zpool_ops); 
-
+    z_pool = zpmem_create_pool(GFP_KERNEL, &zpmem_zpool_ops); 
+    if(!z_pool){
+        return -ENOMEM;
+    }
+    pr_info("load success");
     return 0;
 }
 
 
 static void __exit exit_zpmem(void){
-    pr_info("exited\n");
+    zpmem_zpool_destroy(z_pool);
+    pr_info("exit success\n");
 }
 
 module_init(init_zpmem);
