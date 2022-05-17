@@ -46,8 +46,11 @@ static int zpmem_dev_ctr(void){
     dev_t dev;
     struct block_device* bdev;
     fmode_t mode;
-    u64 part_off;
     struct dax_device* dax_dev;
+
+#ifndef LABOS
+    u64 part_off;
+#endif
 
     if(major == 0){
         pr_err("major number is 0");
@@ -66,7 +69,13 @@ static int zpmem_dev_ctr(void){
         return PTR_ERR(bdev);
 
     part_off;
+
+#ifdef LABOS
+    dax_dev = fs_dax_get_by_bdev(bdev);
+#else
     dax_dev = fs_dax_get_by_bdev(bdev, &part_off);
+#endif
+
     if(IS_ERR(dax_dev))
         return PTR_ERR(dax_dev);
     return 0;
