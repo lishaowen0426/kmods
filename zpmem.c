@@ -22,6 +22,7 @@ struct zpmem_dev{
     struct dax_device* dax_dev;
 };
 
+
 struct zpmem_pool;
 
 struct zpmem_ops {
@@ -29,7 +30,7 @@ struct zpmem_ops {
 };
 struct zpmem_pool{
     spinlock_t lock;
-
+    struct zpmem_dev* pmem_dev;
     struct list_head lru;
     u64 pages_nr;
     const struct zpmem_ops *ops;
@@ -39,46 +40,76 @@ struct zpmem_pool{
 };
 
 
+static int zpmem_zpool_evict(struct zpmem_pool *pool, unsigned long handle)
+{
+    return 0;
+}
+
+static const struct zpmem_ops zpmem_zpool_ops = {
+	.evict =	zpmem_zpool_evict
+};
 static char *_zpmem_claim_ptr = "I belong to zpmem";
 
-static int zpmem_dev_ctr(void){
+static struct zpmem_dev* zpmem_dev_ctr(void){
 
     dev_t dev;
     struct block_device* bdev;
     fmode_t mode;
     struct dax_device* dax_dev;
-
-#ifndef LABOS
-    u64 part_off;
-#endif
+    struct zpmem_dev* zdev;
+    u64 memory_map_size;
+    //u64 part_off;
 
     if(major == 0){
         pr_err("major number is 0");
-        return -ENODEV;
+        return NULL;
     }
 
     dev = MKDEV(major, minor);
-    if(MAJOR(dev) != major || MINOR(dev) != minor)
-        return -EOVERFLOW;
-    else
-        pr_info("find dev\n");
+    if(MAJOR(dev) != major || MINOR(dev) != minor){
+        pr_err("dev number overflow");
+        return NULL;
+    }
    
     mode = FMODE_READ | FMODE_WRITE | FMODE_LSEEK | FMODE_EXCL;
     bdev = blkdev_get_by_dev(dev,mode, _zpmem_claim_ptr); 
-    if(IS_ERR(bdev))
-        return PTR_ERR(bdev);
-
-    part_off;
-
-#ifdef LABOS
+    if(IS_ERR(bdev)){
+        pr_err("blkdev_get_by_dev failed");
+        return NULL;
+    } 
+    memory_map_size = bdev_nr_bytes(bdev); 
+    pr_info("memory_map_size: %llu", memory_map_size);
     dax_dev = fs_dax_get_by_bdev(bdev);
-#else
-    dax_dev = fs_dax_get_by_bdev(bdev, &part_off);
-#endif
+    if(IS_ERR(dax_dev)){
+        pr_err("fs_dax_get_by_bdev failed");
+        return NULL;
+    }
 
-    if(IS_ERR(dax_dev))
-        return PTR_ERR(dax_dev);
-    return 0;
+    zdev = kzalloc(sizeof(struct zpmem_dev), GFP_KERNEL);
+    if(!zdev){
+        pr_err("kzalloc zpmem_dev failed");
+        return NULL;
+    }
+
+    zdev->dax_dev = dax_dev;
+    pr_info("dev ctr success");
+    return zdev;
+}
+
+static struct zpmem_pool *zpmem_create_pool(gfp_t gfp, const struct zpmem_ops *ops)
+{
+	struct zpmem_pool *pool;
+	pool = kzalloc(sizeof(struct zpmem_pool), gfp);
+	if (!pool){
+            pr_err("kzalloc zpmem_pool failed");
+            return NULL;
+        }
+	spin_lock_init(&pool->lock);
+	INIT_LIST_HEAD(&pool->lru);
+	pool->pages_nr = 0;
+	pool->ops = ops;
+        pool->pmem_dev = zpmem_dev_ctr(); 
+	return pool;
 }
 
 
@@ -86,7 +117,14 @@ static void *zpmem_zpool_create(const char *name, gfp_t gfp,
 			       const struct zpool_ops *zpool_ops,
 			       struct zpool *zpool)
 {
-    return NULL;
+    struct zpmem_pool *pool;
+
+    pool = zpmem_create_pool(gfp, zpool_ops ? &zpmem_zpool_ops : NULL);
+    if (pool) {
+            pool->zpool = zpool;
+            pool->zpool_ops = zpool_ops;
+    }
+    return pool;
 }
 
 static void zpmem_zpool_destroy(void *pool)
@@ -140,10 +178,11 @@ static struct zpool_driver zpmem_zpool_driver = {
 
 
 static int __init init_zpmem(void){
+    struct zpmem_pool* zpool;
     pr_info("loaded\n");
-    
+    zpool = zpmem_create_pool(GFP_KERNEL, &zpmem_zpool_ops); 
 
-    return zpmem_dev_ctr();
+    return 0;
 }
 
 
