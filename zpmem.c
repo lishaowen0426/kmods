@@ -104,14 +104,14 @@ static struct zpmem_dev* zpmem_dev_ctr(void){
 #endif
     if(!dax_dev){
         pr_err("fs_dax_get returns null dax_device");
-        goto err1;
+        goto dev_ctr_err1;
     }
 
 
     zdev = kzalloc(sizeof(struct zpmem_dev), GFP_KERNEL);
     if(!zdev){
         pr_err("kzalloc zpmem_dev failed");
-        goto err2;
+        goto dev_ctr_err2;
     }
 
     zdev->dax_dev = dax_dev;
@@ -121,10 +121,10 @@ static struct zpmem_dev* zpmem_dev_ctr(void){
     pr_info("dev ctr success");
     return zdev;
 
-err1:
+dev_ctr_err1:
     blkdev_put(bdev, mode);
     return NULL;
-err2:
+dev_ctr_err2:
     blkdev_put(bdev, mode);
     put_dax(dax_dev);
     return NULL;
@@ -146,11 +146,11 @@ static int zpmem_page_create(struct zpmem_dev* zdev){
     p = s >> PAGE_SHIFT;
     if(!p){
         r = -EINVAL;
-        goto err1;
+        goto page_create_err1;
     }
     if(p != s>> PAGE_SHIFT){
         r = -EOVERFLOW;
-        goto err1;
+        goto page_create_err1;
     }
 
     offset = get_start_sect(zdev->bdev);
@@ -158,7 +158,7 @@ static int zpmem_page_create(struct zpmem_dev* zdev){
     //page aligned offset
     if (offset & (PAGE_SIZE / 512 - 1)) {
             r = -EINVAL;
-            goto err1;
+            goto page_create_err1;
     }
     
     id = dax_read_lock();
@@ -168,22 +168,22 @@ static int zpmem_page_create(struct zpmem_dev* zdev){
         pr_err("dax_direct_access failed: %ld", da);
         zdev->memory_map = NULL;
         r = da;
-        goto err2; 
+        goto page_create_err2; 
     }
     if(!pfn_t_has_page(pfn)){
         pr_err("pfn_t_has_page failed");
         zdev->memory_map = NULL;
         r = -EOPNOTSUPP;
-        goto err2;
+        goto page_create_err2;
     }
     if(!zdev->memory_map){
         pr_err("memory_map is null");
-        goto err2;
+        goto page_create_err2;
     }
     if(da != p){
         //ONLY FOR PMEM, offset = 0, da = p, not sure if this is exactly right...
         pr_err("da != p, da = %ld, p = %ld", da ,p);
-        goto err2;
+        goto page_create_err2;
     }
     pr_info("return pages: %ld, request pages: %ld, pfn:%llu, pfn_to_virt: %p , memory_map:%p", da,p,pfn.val, phys_to_virt(pfn_t_to_phys(pfn)), zdev->memory_map);
     
@@ -191,7 +191,7 @@ static int zpmem_page_create(struct zpmem_dev* zdev){
     pages = kvmalloc_array(p, sizeof(struct page *), GFP_KERNEL);
     if (!pages) {
             r = -ENOMEM;
-            goto err2;
+            goto page_create_err2;
     }
     i = 0;
     while(i < da){
@@ -205,11 +205,11 @@ static int zpmem_page_create(struct zpmem_dev* zdev){
     dax_read_unlock(id); 
     return 0;
 
-err3:
+page_create_err3:
     kvfree(pages);
-err2:
+page_create_err2:
     dax_read_unlock(id);
-err1:
+page_create_err1:
     return r;
 
 
@@ -226,11 +226,11 @@ static struct zpmem_pool *zpmem_create_pool(gfp_t gfp, const struct zpmem_ops *o
         }
         zdev = zpmem_dev_ctr();
         if(!zdev){
-            goto err1;
+            goto create_pool_err1;
         }
 
         if(zpmem_page_create(zdev)){
-           goto err2; 
+           goto create_pool_err2; 
         }
 	spin_lock_init(&pool->lock);
 	INIT_LIST_HEAD(&pool->lru);
@@ -239,9 +239,9 @@ static struct zpmem_pool *zpmem_create_pool(gfp_t gfp, const struct zpmem_ops *o
         pool->pmem_dev = zdev; 
 	return pool;
 
-err2:
+create_pool_err2:
         kfree(zdev);
-err1:
+create_pool_err1:
         kfree(pool);
         return NULL;
 }
