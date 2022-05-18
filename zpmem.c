@@ -11,6 +11,7 @@
 #include <linux/dax.h>
 #include <linux/pfn_t.h>
 #include <linux/version.h>
+#include <asm/io.h>
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 17, 0)
 #define NEW_FS_DAX_GET 
@@ -90,7 +91,7 @@ static struct zpmem_dev* zpmem_dev_ctr(void){
     mode = FMODE_READ | FMODE_WRITE | FMODE_LSEEK | FMODE_EXCL;
     bdev = blkdev_get_by_dev(dev,mode, _zpmem_claim_ptr); 
     if(IS_ERR(bdev)){
-        pr_err("blkdev_get_by_dev failed");
+        pr_err("blkdev_get_by_dev failed, %ld", PTR_ERR(bdev));
         return NULL;
     } 
     memory_map_size = (loff_t)bdev_nr_sectors(bdev)<<SECTOR_SHIFT; 
@@ -101,10 +102,11 @@ static struct zpmem_dev* zpmem_dev_ctr(void){
 #else
     dax_dev = fs_dax_get_by_bdev(bdev);
 #endif
-    if(IS_ERR(dax_dev)){
-        pr_err("fs_dax_get_by_bdev failed");
+    if(!dax_dev){
+        pr_err("fs_dax_get returns null dax_device");
         goto err1;
     }
+
 
     zdev = kzalloc(sizeof(struct zpmem_dev), GFP_KERNEL);
     if(!zdev){
@@ -130,11 +132,12 @@ err2:
 }
 
 static int zpmem_page_create(struct zpmem_dev* zdev){
+
    
     int r;
     struct page** pages;
     u64 s;
-    long p, da;
+    long p, da,i;
     int id;
     sector_t offset;
     pfn_t pfn;
@@ -162,7 +165,7 @@ static int zpmem_page_create(struct zpmem_dev* zdev){
 
     da = dax_direct_access(zdev->dax_dev, offset, p, &zdev->memory_map, &pfn);
     if(da < 0){
-        pr_err("dax_direct_access failed");
+        pr_err("dax_direct_access failed: %ld", da);
         zdev->memory_map = NULL;
         r = da;
         goto err2; 
@@ -173,9 +176,33 @@ static int zpmem_page_create(struct zpmem_dev* zdev){
         r = -EOPNOTSUPP;
         goto err2;
     }
+    if(!zdev->memory_map){
+        pr_err("memory_map is null");
+        goto err2;
+    }
+    if(da != p){
+        //ONLY FOR PMEM, offset = 0, da = p, not sure if this is exactly right...
+        pr_err("da != p, da = %ld, p = %ld", da ,p);
+        goto err2;
+    }
+    pr_info("return pages: %ld, request pages: %ld, pfn:%llu, pfn_to_virt: %p , memory_map:%p", da,p,pfn.val, phys_to_virt(pfn_t_to_phys(pfn)), zdev->memory_map);
+    
+
+    pages = kvmalloc_array(p, sizeof(struct page *), GFP_KERNEL);
+    if (!pages) {
+            r = -ENOMEM;
+            goto err2;
+    }
+    i = 0;
+    while(i < da){
+        pages[i++] = pfn_t_to_page(pfn);
+        pfn.val++;
+    }
+    pr_info("Initialize pmem pages success");
+    
+    zdev->pages = pages;
 
     dax_read_unlock(id); 
-    pr_info("return pages: %ld, request pages: %ld, pfn:%llu", da,p,pfn.val);
     return 0;
 
 err3:
