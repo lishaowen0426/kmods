@@ -154,23 +154,26 @@ static struct zpmem_header *init_zpmem_page(struct page *page)
  *
  * */
 static struct page *__alloc_pmem_page(struct zpmem_pool *pool) {
+    return NULL;
+    /*
+
         struct page *p;
         struct zpmem_header *zhdr;
         if(pool->free_nr == 0)
             goto alloc_pmem_err;
-
         zhdr = list_first_entry(&pool->free, struct zpmem_header, alloc);
 	list_del(&zhdr->alloc);
         --pool->free_nr;
+        
         list_add(&zhdr->alloc, &pool->used);
         ++pool->used_nr;
-
+    
         p = virt_to_page((void*)zhdr);
         clear_page(p); 
 
 alloc_pmem_err:
         return p;
-
+*/
 }
 
 static void __free_pmem_page(struct zpmem_pool *pool, struct zpmem_header *zhdr){
@@ -179,6 +182,7 @@ static void __free_pmem_page(struct zpmem_pool *pool, struct zpmem_header *zhdr)
     --pool->used_nr;
     list_add(&zhdr->alloc, &pool->free);
     ++pool->free_nr;
+    
 }
 
 static void free_zpmem_page(struct zpmem_pool *pool, struct zpmem_header *zhdr)
@@ -291,6 +295,7 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
     
     struct page** pages;
     struct page* pp;
+    void* tt;
     struct zpmem_header *zhdr;
     u64 s;
     long p, da,i;
@@ -362,9 +367,15 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
     INIT_LIST_HEAD(&pool->used);
 
     i = 0;
+    tt = pool->memory_map;
     while(i < da){
         
 	zhdr = page_address(pages[i++]);
+        if((void*) zhdr != tt){
+            pr_err("zhdr != tt");
+            return -EINVAL;
+        }
+        tt += PAGE_SIZE;
 	INIT_LIST_HEAD(&zhdr->alloc);
 	list_add(&zhdr->alloc,&pool->free);
     }
@@ -373,6 +384,9 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
 
     {
         //test
+        spin_lock(&pool->lock);
+        pr_info("first test");
+        tt = pool->memory_map;
         list_for_each_entry(zhdr, &pool->free, alloc){
             pp = virt_to_page((void*)zhdr);
             if(page_address(pp) != zhdr) {
@@ -380,7 +394,19 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
                 return -EINVAL;
             }
 
+            //clear_page(pp);
+
         }
+        pr_info("second test");
+        list_for_each_entry_reverse(zhdr, &pool->free, alloc){
+            if((void*)zhdr != tt){
+                pr_err("not equal to mem addr, tt: %p, zhdr: %p", tt, zhdr);
+                return -EINVAL;
+            }
+            tt += PAGE_SIZE;
+        
+        }
+        spin_unlock(&pool->lock);
     }
 
     pr_info("Initialize %ld free pmem pages success", da);
