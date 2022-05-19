@@ -13,4 +13,6 @@ make
 sudo insmod zpmem.ko major=XX minor=XX
 
 dmesg | grep zpmem
+
+echo zpmem | sudo tee /sys/module/zswap/parameters/zpool
 ```
