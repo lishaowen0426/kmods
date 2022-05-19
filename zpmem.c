@@ -28,18 +28,7 @@ module_param( minor, int,  0644);
 MODULE_PARM_DESC(major, "pmem device major number");
 MODULE_PARM_DESC(minor, "pmem device minor number");
 
-/*****************
- * Structures
-*****************/
-/*
- * NCHUNKS_ORDER determines the internal allocation granularity, effectively
- * adjusting internal fragmentation.  It also determines the number of
- * freelists maintained in each pool. NCHUNKS_ORDER of 6 means that the
- * allocation granularity will be in chunks of size PAGE_SIZE/64. As one chunk
- * in allocated page is occupied by zbud header, NCHUNKS will be calculated to
- * 63 which shows the max number of free chunks in zbud page, also there will be
- * 63 freelists per pool.
- */
+
 #define NCHUNKS_ORDER	6
 
 #define CHUNK_SHIFT	(PAGE_SHIFT - NCHUNKS_ORDER)
@@ -57,24 +46,24 @@ struct zpmem_ops {
 
 
 /**
- * struct zpmem_pool - stores metadata for each zbud pool
+ * struct zpmem_pool - stores metadata for each zpmem pool
  * @lock:	protects all pool fields and first|last_chunk fields of any
- *		zbud page in the pool
- * @unbuddied:	array of lists tracking zbud pages that only contain one buddy;
- *		the lists each zbud page is added to depends on the size of
+ *		zpmem page in the pool
+ * @unbuddied:	array of lists tracking zpmem pages that only contain one buddy;
+ *		the lists each zpmem page is added to depends on the size of
  *		its free region.
- * @buddied:	list tracking the zbud pages that contain two buddies;
- *		these zbud pages are full
- * @lru:	list tracking the zbud pages in LRU order by most recently
+ * @buddied:	list tracking the zpmem pages that contain two buddies;
+ *		these zpmem pages are full
+ * @lru:	list tracking the zpmem pages in LRU order by most recently
  *		added buddy.
- * @pages_nr:	number of zbud pages in the pool.
+ * @pages_nr:	number of zpmem pages in the pool.
  * @ops:	pointer to a structure of user defined operations specified at
  *		pool creation time.
  * @zpool:	zpool driver
  * @zpool_ops:	zpool operations structure with an evict callback
  *
  * This structure is allocated at pool creation time and maintains metadata
- * pertaining to a particular zbud pool.
+ * pertaining to a particular zpmem pool.
  */
 struct zpmem_pool {
 	spinlock_t lock;
@@ -107,10 +96,10 @@ struct zpmem_pool {
 };
 
 /*
- * struct zbud_header - zbud page metadata occupying the first chunk of each
- *			zbud page.
- * @buddy:	links the zbud page into the unbuddied/buddied lists in the pool
- * @lru:	links the zbud page into the lru list in the pool
+ * struct zpmem_header - zpmem page metadata occupying the first chunk of each
+ *			zpmem page.
+ * @buddy:	links the zpmem page into the unbuddied/buddied lists in the pool
+ * @lru:	links the zpmem page into the lru list in the pool
  * @first_chunks:	the size of the first buddy in chunks, 0 if free
  * @last_chunks:	the size of the last buddy in chunks, 0 if free
  */
@@ -154,8 +143,6 @@ static struct zpmem_header *init_zpmem_page(struct page *page)
  *
  * */
 static struct page *__alloc_pmem_page(struct zpmem_pool *pool) {
-    return NULL;
-    /*
 
         struct page *p;
         struct zpmem_header *zhdr;
@@ -164,16 +151,13 @@ static struct page *__alloc_pmem_page(struct zpmem_pool *pool) {
         zhdr = list_first_entry(&pool->free, struct zpmem_header, alloc);
 	list_del(&zhdr->alloc);
         --pool->free_nr;
-        
         list_add(&zhdr->alloc, &pool->used);
         ++pool->used_nr;
-    
         p = virt_to_page((void*)zhdr);
-        clear_page(p); 
-
-alloc_pmem_err:
+        //clear_page(p); 
         return p;
-*/
+alloc_pmem_err:
+        return NULL;
 }
 
 static void __free_pmem_page(struct zpmem_pool *pool, struct zpmem_header *zhdr){
@@ -192,7 +176,7 @@ static void free_zpmem_page(struct zpmem_pool *pool, struct zpmem_header *zhdr)
 }
 
 /*
- * Encodes the handle of a particular buddy within a zbud page
+ * Encodes the handle of a particular buddy within a zpmem page
  * Pool lock should be held as this function accesses first|last_chunks
  */
 static unsigned long encode_handle(struct zpmem_header *zhdr, enum buddy bud)
@@ -203,24 +187,24 @@ static unsigned long encode_handle(struct zpmem_header *zhdr, enum buddy bud)
 	 * For now, the encoded handle is actually just the pointer to the data
 	 * but this might not always be the case.  A little information hiding.
 	 * Add CHUNK_SIZE to the handle if it is the first allocation to jump
-	 * over the zbud header in the first chunk.
+	 * over the zpmem header in the first chunk.
 	 */
 	handle = (unsigned long)zhdr;
 	if (bud == FIRST)
-		/* skip over zbud header */
+		/* skip over zpmem header */
 		handle += ZHDR_SIZE_ALIGNED;
 	else /* bud == LAST */
 		handle += PAGE_SIZE - (zhdr->last_chunks  << CHUNK_SHIFT);
 	return handle;
 }
 
-/* Returns the zbud page where a given handle is stored */
+/* Returns the zpmem page where a given handle is stored */
 static struct zpmem_header *handle_to_zpmem_header(unsigned long handle)
 {
 	return (struct zpmem_header *)(handle & PAGE_MASK);
 }
 
-/* Returns the number of free chunks in a zbud page */
+/* Returns the number of free chunks in a zpmem page */
 static int num_free_chunks(struct zpmem_header *zhdr)
 {
 	/*
@@ -414,14 +398,7 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
 }
 
 
-/**
- * zbud_create_pool() - create a new zbud pool
- * @gfp:	gfp flags when allocating the zbud pool structure
- * @ops:	user-defined operations for the zbud pool
- *
- * Return: pointer to the new zbud pool or NULL if the metadata allocation
- * failed.
- */
+
 static struct zpmem_pool *zpmem_create_pool(gfp_t gfp, const struct zpmem_ops *ops)
 {
 	struct zpmem_pool *pool;
@@ -453,12 +430,7 @@ static struct zpmem_pool *zpmem_create_pool(gfp_t gfp, const struct zpmem_ops *o
 	return pool;
 }
 
-/**
- * zbud_destroy_pool() - destroys an existing zbud pool
- * @pool:	the zbud pool to be destroyed
- *
- * The pool should be emptied before this function is called.
- */
+
 static void zpmem_destroy_pool(struct zpmem_pool *pool)
 {
         blkdev_put(pool->bdev, pool->mode);
@@ -468,25 +440,7 @@ static void zpmem_destroy_pool(struct zpmem_pool *pool)
 
 }
 
-/**
- * zbud_alloc() - allocates a region of a given size
- * @pool:	zbud pool from which to allocate
- * @size:	size in bytes of the desired allocation
- * @gfp:	gfp flags used if the pool needs to grow
- * @handle:	handle of the new allocation
- *
- * This function will attempt to find a free region in the pool large enough to
- * satisfy the allocation request.  A search of the unbuddied lists is
- * performed first. If no suitable free region is found, then a new page is
- * allocated and added to the pool to satisfy the request.
- *
- * gfp should not set __GFP_HIGHMEM as highmem pages cannot be used
- * as zbud pool pages.
- *
- * Return: 0 if success and handle is set, otherwise -EINVAL if the size or
- * gfp arguments are invalid or -ENOMEM if the pool was unable to allocate
- * a new page.
- */
+
 static int zpmem_alloc(struct zpmem_pool *pool, size_t size, gfp_t gfp,
 			unsigned long *handle)
 {
@@ -557,16 +511,7 @@ unlock_and_return:
 	return r;
 }
 
-/**
- * zbud_free() - frees the allocation associated with the given handle
- * @pool:	pool in which the allocation resided
- * @handle:	handle associated with the allocation returned by zbud_alloc()
- *
- * In the case that the zbud page in which the allocation resides is under
- * reclaim, as indicated by the PG_reclaim flag being set, this function
- * only sets the first|last_chunks to 0.  The page is actually freed
- * once both buddies are evicted (see zbud_reclaim_page() below).
- */
+
 static void zpmem_free(struct zpmem_pool *pool, unsigned long handle)
 {
 	struct zpmem_header *zhdr;
@@ -604,41 +549,7 @@ static void zpmem_free(struct zpmem_pool *pool, unsigned long handle)
 	spin_unlock(&pool->lock);
 }
 
-/**
- * zbud_reclaim_page() - evicts allocations from a pool page and frees it
- * @pool:	pool from which a page will attempt to be evicted
- * @retries:	number of pages on the LRU list for which eviction will
- *		be attempted before failing
- *
- * zbud reclaim is different from normal system reclaim in that the reclaim is
- * done from the bottom, up.  This is because only the bottom layer, zbud, has
- * information on how the allocations are organized within each zbud page. This
- * has the potential to create interesting locking situations between zbud and
- * the user, however.
- *
- * To avoid these, this is how zbud_reclaim_page() should be called:
- *
- * The user detects a page should be reclaimed and calls zbud_reclaim_page().
- * zbud_reclaim_page() will remove a zbud page from the pool LRU list and call
- * the user-defined eviction handler with the pool and handle as arguments.
- *
- * If the handle can not be evicted, the eviction handler should return
- * non-zero. zbud_reclaim_page() will add the zbud page back to the
- * appropriate list and try the next zbud page on the LRU up to
- * a user defined number of retries.
- *
- * If the handle is successfully evicted, the eviction handler should
- * return 0 _and_ should have called zbud_free() on the handle. zbud_free()
- * contains logic to delay freeing the page if the page is under reclaim,
- * as indicated by the setting of the PG_reclaim flag on the underlying page.
- *
- * If all buddies in the zbud page are successfully evicted, then the
- * zbud page can be freed.
- *
- * Returns: 0 if page is successfully freed, otherwise -EINVAL if there are
- * no pages to evict or an eviction handler is not registered, -EAGAIN if
- * the retry limit was hit.
- */
+
 static int zpmem_reclaim_page(struct zpmem_pool *pool, unsigned int retries)
 {
 	int i, ret, freechunks;
@@ -709,47 +620,24 @@ next:
 	return -EAGAIN;
 }
 
-/**
- * zbud_map() - maps the allocation associated with the given handle
- * @pool:	pool in which the allocation resides
- * @handle:	handle associated with the allocation to be mapped
- *
- * While trivial for zbud, the mapping functions for others allocators
- * implementing this allocation API could have more complex information encoded
- * in the handle and could create temporary mappings to make the data
- * accessible to the user.
- *
- * Returns: a pointer to the mapped allocation
- */
+
 static void *zpmem_map(struct zpmem_pool *pool, unsigned long handle)
 {
 	return (void *)(handle);
 }
 
-/**
- * zbud_unmap() - maps the allocation associated with the given handle
- * @pool:	pool in which the allocation resides
- * @handle:	handle associated with the allocation to be unmapped
- */
+
 static void zpmem_unmap(struct zpmem_pool *pool, unsigned long handle)
 {
 }
 
-/**
- * zbud_get_pool_size() - gets the zbud pool size in pages
- * @pool:	pool whose size is being queried
- *
- * Returns: size in pages of the given pool.  The pool lock need not be
- * taken to access pages_nr.
- */
+
 static u64 zpmem_get_pool_size(struct zpmem_pool *pool)
 {
 	return pool->pages_nr;
 }
 
-/*****************
- * zpool
- ****************/
+
 
 static int zpmem_zpool_evict(struct zpmem_pool *pool, unsigned long handle)
 {
@@ -852,7 +740,7 @@ static int __init init_zpmem(void)
 
         {
             //test
-            pool = zpmem_create_pool(GFP_KERNEL, &zpmem_zpool_ops );
+//            pool = zpmem_create_pool(GFP_KERNEL, &zpmem_zpool_ops );
         }
         
 	pr_info("loaded\n");
@@ -867,7 +755,7 @@ static void __exit exit_zpmem(void)
 
         {
             //test
-            zpmem_destroy_pool(pool);            
+ //           zpmem_destroy_pool(pool);            
         }
 	zpool_unregister_driver(&zpmem_zpool_driver);
 	pr_info("unloaded\n");
