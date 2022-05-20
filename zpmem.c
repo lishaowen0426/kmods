@@ -139,7 +139,7 @@ static struct zpmem_header *init_zpmem_page(struct page *page)
 	return zhdr;
 }
 /**
- * alloc and free require pool->lock is hold
+ * alloc and free require holding the  pool->lock
  *
  * */
 static struct page *__alloc_pmem_page(struct zpmem_pool *pool) {
@@ -278,7 +278,7 @@ dax_err:
 static int init_zpmem_pages(struct zpmem_pool* pool){
     
     struct page** pages;
-    struct page* pp;
+    struct page* pp __maybe_unused;
     void* tt;
     struct zpmem_header *zhdr;
     u64 s;
@@ -365,7 +365,7 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
     }
     pool->free_nr = da;
     pool->used_nr = 0;
-
+    /*
     {
         //test
         spin_lock(&pool->lock);
@@ -392,6 +392,7 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
         }
         spin_unlock(&pool->lock);
     }
+    */
 
     pr_info("Initialize %ld free pmem pages success", da);
     return 0;
