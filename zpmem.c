@@ -87,7 +87,6 @@ struct zpmem_pool {
         fmode_t mode;
         void* memory_map;
         u64 memory_map_size;
-        struct page** pages;
         struct list_head free;
         u64 free_nr;
         struct list_head used;
@@ -311,6 +310,7 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
 
     id = dax_read_lock();
     da = dax_direct_access(pool->dax_dev, offset, p, &pool->memory_map, &pfn);
+    dax_read_unlock(id);
     if(da < 0){
         pr_err("dax_direct_access failed: %ld", da);
         pool->memory_map = NULL;
@@ -324,28 +324,17 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
     }
     if(!pool->memory_map){
         pr_err("memory_map is null");
-        return  -EOPNOTSUPP;
+        return -EOPNOTSUPP;
     }
 
     if(da != p){
         pr_err("da != p, da = %ld, p = %ld", da,p);
-        return -EOPNOTSUPP;
+        return -EOPNOTSUPP
     }
     pr_info("return pages: %ld, request pages: %ld, pfn:%llu, pfn_to_virt: %p , memory_map:%p", da,p,pfn.val, phys_to_virt(pfn_t_to_phys(pfn)), pool->memory_map);
 
 
 
-    pages = kvmalloc_array(p, sizeof(struct page *), GFP_KERNEL);
-    if (!pages) {
-        pr_err("malloc page array failed");
-        return -ENOMEM;
-    }
-    i = 0;
-    while(i < da){
-        pages[i++] = pfn_t_to_page(pfn);
-        pfn.val++;
-    }
-    pool->pages = pages;
 
     INIT_LIST_HEAD(&pool->free);
     INIT_LIST_HEAD(&pool->used);
@@ -354,45 +343,19 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
     tt = pool->memory_map;
     while(i < da){
         
-	zhdr = page_address(pages[i++]);
+	zhdr = page_address(pfn_t_to_page(pfn));
         if((void*) zhdr != tt){
             pr_err("zhdr != tt");
             return -EINVAL;
         }
         tt += PAGE_SIZE;
+        pfn.val++;
 	INIT_LIST_HEAD(&zhdr->alloc);
 	list_add(&zhdr->alloc,&pool->free);
     }
     pool->free_nr = da;
     pool->used_nr = 0;
-    /*
-    {
-        //test
-        spin_lock(&pool->lock);
-        pr_info("first test");
-        tt = pool->memory_map;
-        list_for_each_entry(zhdr, &pool->free, alloc){
-            pp = virt_to_page((void*)zhdr);
-            if(page_address(pp) != zhdr) {
-                pr_err("wrong address");
-                return -EINVAL;
-            }
 
-            //clear_page(pp);
-
-        }
-        pr_info("second test");
-        list_for_each_entry_reverse(zhdr, &pool->free, alloc){
-            if((void*)zhdr != tt){
-                pr_err("not equal to mem addr, tt: %p, zhdr: %p", tt, zhdr);
-                return -EINVAL;
-            }
-            tt += PAGE_SIZE;
-        
-        }
-        spin_unlock(&pool->lock);
-    }
-    */
 
     pr_info("Initialize %ld free pmem pages success", da);
     return 0;
@@ -436,7 +399,6 @@ static void zpmem_destroy_pool(struct zpmem_pool *pool)
 {
         blkdev_put(pool->bdev, pool->mode);
         put_dax(pool->dax_dev);
-        kvfree(pool->pages);
 	kfree(pool);
 
 }
@@ -741,7 +703,7 @@ static int __init init_zpmem(void)
 
         {
             //test
-//            pool = zpmem_create_pool(GFP_KERNEL, &zpmem_zpool_ops );
+            pool = zpmem_create_pool(GFP_KERNEL, &zpmem_zpool_ops );
         }
         
 	pr_info("loaded\n");
@@ -756,7 +718,7 @@ static void __exit exit_zpmem(void)
 
         {
             //test
- //           zpmem_destroy_pool(pool);            
+            zpmem_destroy_pool(pool);            
         }
 	zpool_unregister_driver(&zpmem_zpool_driver);
 	pr_info("unloaded\n");
