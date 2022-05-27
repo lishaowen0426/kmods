@@ -276,7 +276,6 @@ dax_err:
 
 static int init_zpmem_pages(struct zpmem_pool* pool){
     
-    struct page** pages;
     struct page* pp __maybe_unused;
     void* tt;
     struct zpmem_header *zhdr;
@@ -329,7 +328,7 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
 
     if(da != p){
         pr_err("da != p, da = %ld, p = %ld", da,p);
-        return -EOPNOTSUPP
+        return -EOPNOTSUPP;
     }
     pr_info("return pages: %ld, request pages: %ld, pfn:%llu, pfn_to_virt: %p , memory_map:%p", da,p,pfn.val, phys_to_virt(pfn_t_to_phys(pfn)), pool->memory_map);
 
