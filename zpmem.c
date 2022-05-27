@@ -306,7 +306,6 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
         pr_err("offset is not aligned");
         return -EINVAL;
     }
-
     id = dax_read_lock();
     da = dax_direct_access(pool->dax_dev, offset, p, &pool->memory_map, &pfn);
     dax_read_unlock(id);
@@ -334,23 +333,18 @@ static int init_zpmem_pages(struct zpmem_pool* pool){
 
 
 
-
     INIT_LIST_HEAD(&pool->free);
     INIT_LIST_HEAD(&pool->used);
-
     i = 0;
-    tt = pool->memory_map;
+    //tt = pool->memory_map;
     while(i < da){
         
 	zhdr = page_address(pfn_t_to_page(pfn));
-        if((void*) zhdr != tt){
-            pr_err("zhdr != tt");
-            return -EINVAL;
-        }
-        tt += PAGE_SIZE;
+        //tt += PAGE_SIZE;
         pfn.val++;
 	INIT_LIST_HEAD(&zhdr->alloc);
 	list_add(&zhdr->alloc,&pool->free);
+        i++;
     }
     pool->free_nr = da;
     pool->used_nr = 0;
@@ -396,6 +390,7 @@ static struct zpmem_pool *zpmem_create_pool(gfp_t gfp, const struct zpmem_ops *o
 
 static void zpmem_destroy_pool(struct zpmem_pool *pool)
 {
+    if(pool == NULL) return;
         blkdev_put(pool->bdev, pool->mode);
         put_dax(pool->dax_dev);
 	kfree(pool);
