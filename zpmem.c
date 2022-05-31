@@ -154,6 +154,7 @@ static struct page *__alloc_pmem_page(struct zpmem_pool *pool) {
         ++pool->used_nr;
         p = virt_to_page((void*)zhdr);
         //clear_page(p); 
+        //pr_info("used: %llu", pool->used_nr);
         return p;
 alloc_pmem_err:
         return NULL;
@@ -697,7 +698,7 @@ static int __init init_zpmem(void)
 
         {
             //test
-            pool = zpmem_create_pool(GFP_KERNEL, &zpmem_zpool_ops );
+//            pool = zpmem_create_pool(GFP_KERNEL, &zpmem_zpool_ops );
         }
         
 	pr_info("loaded\n");
@@ -712,7 +713,7 @@ static void __exit exit_zpmem(void)
 
         {
             //test
-            zpmem_destroy_pool(pool);            
+//            zpmem_destroy_pool(pool);            
         }
 	zpool_unregister_driver(&zpmem_zpool_driver);
 	pr_info("unloaded\n");
