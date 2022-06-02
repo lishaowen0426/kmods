@@ -728,6 +728,7 @@ static int __init zpmem_debugfs_init(void)
 	debugfs_create_u64("nofree_alloc_fail", 0444,zpmem_debugfs_root, &zpmem_nofree_alloc_fail);
 	debugfs_create_u64("highmem_alloc_fail", 0444,zpmem_debugfs_root, &zpmem_highmem_alloc_fail);
 	debugfs_create_u64("size_alloc_fail", 0444,zpmem_debugfs_root, &zpmem_size_alloc_fail);
+	debugfs_create_u64("alloc_called", 0444,zpmem_debugfs_root, &zpmem_alloc_called);
 
 	//debugfs_create_atomic_t("same_filled_pages", 0444,zswap_debugfs_root, &zswap_same_filled_pages);
 
