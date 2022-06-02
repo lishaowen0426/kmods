@@ -677,7 +677,7 @@ static u64 zpmem_zpool_total_size(void *pool)
 
 static struct zpool_driver zpmem_zpool_driver = {
 	.type =		"zpmem",
-	.sleep_mapped = true,
+//	.sleep_mapped = true,
 	.owner =	THIS_MODULE,
 	.create =	zpmem_zpool_create,
 	.destroy =	zpmem_zpool_destroy,
