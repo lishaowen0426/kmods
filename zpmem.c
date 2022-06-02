@@ -733,6 +733,9 @@ static int __init init_zpmem(void)
 	pr_info("loaded\n");
 
 	zpool_register_driver(&zpmem_zpool_driver);
+        if(zpmem_debugfs_init()){
+            pr_warn("debugfs initialization failed\n");
+        }
 
 	return 0;
 }
