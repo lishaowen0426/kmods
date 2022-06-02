@@ -412,7 +412,7 @@ static int zpmem_alloc(struct zpmem_pool *pool, size_t size, gfp_t gfp,
 	enum buddy bud;
 	struct page *page;
         int r;
-
+        r = 0;
 	if (!size || (gfp & __GFP_HIGHMEM)){
             zpmem_highmem_alloc_fail++;
 	    return -EINVAL;
