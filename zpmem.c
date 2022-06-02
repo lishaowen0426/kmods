@@ -43,7 +43,9 @@ struct zpmem_ops {
 };
 
 
-static u64 zpmem_reject_alloc_fail;
+static u64 zpmem_highmem_alloc_fail;
+static u64 zpmem_nofree_alloc_fail;
+static u64 zpmem_size_alloc_fail;
 
 
 /**
@@ -410,10 +412,14 @@ static int zpmem_alloc(struct zpmem_pool *pool, size_t size, gfp_t gfp,
 	struct page *page;
         int r;
 
-	if (!size || (gfp & __GFP_HIGHMEM))
-		return -EINVAL;
-	if (size > PAGE_SIZE - ZHDR_SIZE_ALIGNED - CHUNK_SIZE)
-		return -ENOSPC;
+	if (!size || (gfp & __GFP_HIGHMEM)){
+            zpmem_highmem_alloc_fail++;
+	    return -EINVAL;
+        }
+	if (size > PAGE_SIZE - ZHDR_SIZE_ALIGNED - CHUNK_SIZE){
+            zpmem_size_alloc_fail++;
+	    return -ENOSPC;
+        }
 	chunks = size_to_chunks(size);
 	spin_lock(&pool->lock);
 
@@ -436,6 +442,7 @@ static int zpmem_alloc(struct zpmem_pool *pool, size_t size, gfp_t gfp,
 	//page = alloc_page(gfp);
 	page = __alloc_pmem_page(pool);
 	if (!page){
+            zpmem_nofree_alloc_fail++;
             r = -ENOMEM;
             goto unlock_and_return;
         }
@@ -468,7 +475,6 @@ found:
 unlock_and_return:
 	spin_unlock(&pool->lock);
     
-        if(r != 0) zpmem_reject_alloc_fail++;
 	return r;
 }
 
@@ -706,8 +712,9 @@ static int __init zpmem_debugfs_init(void)
 	zpmem_debugfs_root = debugfs_create_dir("zpmem", NULL);
 
 
-	debugfs_create_u64("reject_alloc_fail", 0444,
-			   zpmem_debugfs_root, &zpmem_reject_alloc_fail);
+	debugfs_create_u64("nofree_alloc_fail", 0444,zpmem_debugfs_root, &zpmem_nofree_alloc_fail);
+	debugfs_create_u64("highmem_alloc_fail", 0444,zpmem_debugfs_root, &zpmem_highmem_alloc_fail);
+	debugfs_create_u64("size_alloc_fail", 0444,zpmem_debugfs_root, &zpmem_size_alloc_fail);
 
 	//debugfs_create_atomic_t("same_filled_pages", 0444,zswap_debugfs_root, &zswap_same_filled_pages);
 
