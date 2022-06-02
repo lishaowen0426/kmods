@@ -46,6 +46,7 @@ struct zpmem_ops {
 static u64 zpmem_highmem_alloc_fail;
 static u64 zpmem_nofree_alloc_fail;
 static u64 zpmem_size_alloc_fail;
+static u64 zpmem_alloc_called;
 
 
 /**
@@ -145,7 +146,7 @@ static struct zpmem_header *init_zpmem_page(struct page *page)
  *
  * */
 static struct page *__alloc_pmem_page(struct zpmem_pool *pool) {
-
+        zpmem_alloc_called++;
         struct page *p;
         struct zpmem_header *zhdr;
         if(pool->free_nr == 0){
@@ -474,7 +475,7 @@ found:
 	*handle = encode_handle(zhdr, bud);
 unlock_and_return:
 	spin_unlock(&pool->lock);
-    
+        
 	return r;
 }
 
@@ -710,7 +711,7 @@ static int __init zpmem_debugfs_init(void)
         int r;
 	if (!debugfs_initialized())
 		return -ENODEV;
-        
+/*        
         {
             struct path p;
             r = kern_path("/sys/kernel/debug/zpmem", LOOKUP_DIRECTORY, &p);
@@ -720,7 +721,7 @@ static int __init zpmem_debugfs_init(void)
                 debugfs_remove_recursive(p.dentry);
 
         }
-
+*/
 	zpmem_debugfs_root = debugfs_create_dir("zpmem", NULL);
 
 
