@@ -147,7 +147,6 @@ static struct page *__alloc_pmem_page(struct zpmem_pool *pool) {
         struct page *p;
         struct zpmem_header *zhdr;
         if(pool->free_nr == 0){
-            zpmem_reject_alloc_fail++;
             goto alloc_pmem_err;
         }
         zhdr = list_first_entry(&pool->free, struct zpmem_header, alloc);
@@ -468,7 +467,8 @@ found:
 	*handle = encode_handle(zhdr, bud);
 unlock_and_return:
 	spin_unlock(&pool->lock);
-
+    
+        if(r != 0) zpmem_reject_alloc_fail++;
 	return r;
 }
 
