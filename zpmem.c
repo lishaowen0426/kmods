@@ -767,7 +767,7 @@ static void __exit exit_zpmem(void)
 //            zpmem_destroy_pool(pool);            
         }
 	zpool_unregister_driver(&zpmem_zpool_driver);
-        debugfs_remove(zpmem_debugfs_root);
+        debugfs_remove_recursive(zpmem_debugfs_root);
 	pr_info("unloaded\n");
 }
 
