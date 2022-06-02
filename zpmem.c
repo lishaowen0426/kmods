@@ -701,13 +701,25 @@ static struct zpmem_pool *pool;
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
+#include <linux/namei.h>
 
 static struct dentry *zpmem_debugfs_root;
 
 static int __init zpmem_debugfs_init(void)
 {
+        int r;
 	if (!debugfs_initialized())
 		return -ENODEV;
+        
+        {
+            struct path p;
+            r = kern_path("/sys/kernel/debug/zpmem", LOOKUP_DIRECTORY, &p);
+            if(r)
+                pr_warn("debugfs for zpmem does not exist\n");
+            else
+                debugfs_remove_recursive(p.dentry);
+
+        }
 
 	zpmem_debugfs_root = debugfs_create_dir("zpmem", NULL);
 
@@ -755,6 +767,7 @@ static void __exit exit_zpmem(void)
 //            zpmem_destroy_pool(pool);            
         }
 	zpool_unregister_driver(&zpmem_zpool_driver);
+        debugfs_remove(zpmem_debugfs_root);
 	pr_info("unloaded\n");
 }
 
