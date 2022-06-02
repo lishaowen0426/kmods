@@ -43,6 +43,7 @@ struct zpmem_ops {
 };
 
 
+static u64 zpmem_reject_alloc_fail;
 
 
 /**
@@ -145,8 +146,10 @@ static struct page *__alloc_pmem_page(struct zpmem_pool *pool) {
 
         struct page *p;
         struct zpmem_header *zhdr;
-        if(pool->free_nr == 0)
+        if(pool->free_nr == 0){
+            zpmem_reject_alloc_fail++;
             goto alloc_pmem_err;
+        }
         zhdr = list_first_entry(&pool->free, struct zpmem_header, alloc);
 	list_del(&zhdr->alloc);
         --pool->free_nr;
@@ -249,7 +252,7 @@ static int init_zpmem_dax(struct zpmem_pool* pool){
         pr_err("blkdev_get_by_dev failed, %ld", PTR_ERR(bdev));
         return PTR_ERR(bdev);
     } 
-    memory_map_size = (loff_t)bdev_nr_sectors(bdev)<<SECTOR_SHIFT; 
+    memory_map_size = i_size_read(bdev->bd_inode);
     pr_info("memory_map_size: %llu", memory_map_size);
 
 #ifdef NEW_FS_DAX_GET
@@ -690,6 +693,32 @@ MODULE_ALIAS("zpool-zpmem");
 
 static struct zpmem_pool *pool;
 
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+
+static struct dentry *zpmem_debugfs_root;
+
+static int __init zpmem_debugfs_init(void)
+{
+	if (!debugfs_initialized())
+		return -ENODEV;
+
+	zpmem_debugfs_root = debugfs_create_dir("zpmem", NULL);
+
+
+	debugfs_create_u64("reject_alloc_fail", 0444,
+			   zpmem_debugfs_root, &zpmem_reject_alloc_fail);
+
+	//debugfs_create_atomic_t("same_filled_pages", 0444,zswap_debugfs_root, &zswap_same_filled_pages);
+
+	return 0;
+}
+#else
+static int __init zswap_debugfs_init(void)
+{
+	return 0;
+}
+#endif
 static int __init init_zpmem(void)
 {
 	/* Make sure the zbud header will fit in one chunk */
